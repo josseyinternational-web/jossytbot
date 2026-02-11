@@ -76,6 +76,8 @@ def download_format(update: Update, context: CallbackContext):
         return
     
     fmt_id = query.data
+    is_high_res = '720p' in fmt_id or '1080p' in fmt_id  # Detect high-res formats
+    
     query.message.edit_text("⏳ Starting download...")
     
     try:
@@ -110,15 +112,16 @@ def download_format(update: Update, context: CallbackContext):
             
             if file_path.endswith(('.mp3', '.m4a')):
                 query.message.reply_audio(open(file_path, 'rb'), title=info['title'])
+            elif is_high_res:
+                # SEND 720P/1080P AS DOCUMENTS (NO SIZE LIMIT)
+                query.message.reply_document(
+                    open(file_path, 'rb'),
+                    caption=f"✅ {info['title']} | {os.path.getsize(file_path)//1024//1024} MB",
+                    disable_content_type_detection=True
+                )
             else:
-                try:
-                    query.message.reply_video(open(file_path, 'rb'), caption=f"✅ {info['title']}")
-                except:
-                    query.message.reply_document(
-                        open(file_path, 'rb'),
-                        caption=f"✅ {info['title']} | Size: {os.path.getsize(file_path)//1024//1024} MB",
-                        disable_content_type_detection=True
-                    )
+                # SEND 360P/480P AS VIDEOS (PLAYABLE)
+                query.message.reply_video(open(file_path, 'rb'), caption=f"✅ {info['title']}")
         
         del user_context[user_id]
         query.message.edit_text("🎉 Done!")
