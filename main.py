@@ -23,7 +23,7 @@ async def start(client, message):
         "👋 Hey it's *Joss!* \n\n"
         "📥 You want to download a YouTube link? \n"
         "👉 Just *drop it here* — I'll handle the rest! 🚀",
-        parse_mode='md'  # ✅ FIXED: 'md' not 'Markdown'
+        parse_mode="markdown"
     )
 
 @app.on_message(filters.text)
@@ -57,7 +57,7 @@ async def handle_link(client, message):
         
         await message.reply_text(
             f"🎬 *{info['title']}*\n\n🎯 Choose format:",
-            parse_mode='md',  # ✅ FIXED: 'md' not 'Markdown'
+            parse_mode="markdown",
             reply_markup=types.InlineKeyboardMarkup(keyboard)
         )
         
