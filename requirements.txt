@@ -1,2 +1,2 @@
-telethon
 yt-dlp
+python-telegram-bot==13.15
