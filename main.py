@@ -76,27 +76,20 @@ def download_format(update: Update, context: CallbackContext):
         return
     
     fmt_id = query.data
-    is_high_res = '720p' in fmt_id or '1080p' in fmt_id  # Detect high-res formats
+    is_high_res = '720p' in fmt_id or '1080p' in fmt_id
     
-    query.message.edit_text("⏳ Starting download...")
+    query.message.edit_text("⏳ Downloading... (This may take 20-60 seconds)")
     
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            def progress_hook(d):
-                if d['status'] == 'downloading':
-                    percent = d['_percent_str'].strip()
-                    speed = d.get('_speed_str', '0').strip()
-                    query.message.edit_text(f"⏳ Downloading...\n\n`{percent}` • `{speed}`", parse_mode='Markdown')
-            
             ydl_opts = {
                 'format': fmt_id,
                 'outtmpl': os.path.join(tmpdir, '%(id)s.%(ext)s'),
-                'quiet': False,
+                'quiet': True,
                 'no_warnings': True,
                 'noplaylist': True,
                 'retries': 10,
-                'socket_timeout': 30,
-                'progress_hooks': [progress_hook]
+                'socket_timeout': 60
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -108,19 +101,17 @@ def download_format(update: Update, context: CallbackContext):
                 os.rename(file_path, new_path)
                 file_path = new_path
             
-            query.message.edit_text("📤 Uploading to Telegram...")
-            
             if file_path.endswith(('.mp3', '.m4a')):
                 query.message.reply_audio(open(file_path, 'rb'), title=info['title'])
             elif is_high_res:
-                # SEND 720P/1080P AS DOCUMENTS (NO SIZE LIMIT)
+                # SEND ONLY 720P/1080P AS DOCUMENTS
                 query.message.reply_document(
                     open(file_path, 'rb'),
                     caption=f"✅ {info['title']} | {os.path.getsize(file_path)//1024//1024} MB",
                     disable_content_type_detection=True
                 )
             else:
-                # SEND 360P/480P AS VIDEOS (PLAYABLE)
+                # SEND 360P/480P AS VIDEOS
                 query.message.reply_video(open(file_path, 'rb'), caption=f"✅ {info['title']}")
         
         del user_context[user_id]
