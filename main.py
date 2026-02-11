@@ -8,7 +8,13 @@ API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-app = Client("yt_downloader", api_id=API_ID, api_hash=API_HASH, bot_token=TELEGRAM_TOKEN)
+app = Client(
+    "yt_downloader",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=TELEGRAM_TOKEN
+)
+
 user_context = {}
 
 @app.on_message(filters.command("start"))
@@ -20,8 +26,12 @@ async def start(client, message):
         parse_mode="markdown"
     )
 
-@app.on_message(filters.text & ~filters.command)
+@app.on_message(filters.text)
 async def handle_link(client, message):
+    # Ignore commands (like /start, /help)
+    if message.text.startswith('/'):
+        return
+    
     text = message.text.strip()
     if "youtube.com" not in text and "youtu.be" not in text:
         return await message.reply_text("⚠️ Please send a valid YouTube link")
@@ -99,4 +109,5 @@ async def download_format(client, callback_query):
     except Exception as e:
         await callback_query.message.edit_text(f"❌ Failed: {str(e)[:80]}")
 
-app.run()
+if __name__ == "__main__":
+    app.run()
