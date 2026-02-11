@@ -36,7 +36,13 @@ def handle_link(update: Update, context: CallbackContext):
             info = ydl.extract_info(text, download=False)
         
         user_context[user_id] = {'link': text, 'title': info.get('title', 'Video')}
-        formats = [('360p', 'best[height=360]'), ('480p', 'best[height=480]'), ('720p', 'best[height=720]'), ('1080p', 'best[height=1080]'), ('🎵 Audio (MP3)', 'bestaudio[ext=m4a]/bestaudio')]
+    formats = [
+    ('360p', 'bv*[height<=360]+ba/b[height<=360]'),
+    ('480p', 'bv*[height<=480]+ba/b[height<=480]'),
+    ('720p', 'bv*[height<=720]+ba/b[height<=720]'),
+    ('1080p', 'bv*[height<=1080]+ba/b[height<=1080]'),
+    ('🎵 Audio (MP3)', 'ba[ext=m4a]/ba')
+]
         
         keyboard = []
         for i in range(0, len(formats), 2):
@@ -102,3 +108,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
