@@ -1,47 +1,41 @@
-from pyrogram import Client, filters, types
-import yt_dlp
-import tempfile
 import os
+import logging
+import tempfile
+import yt_dlp
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters, CallbackContext
 
-# ===== CONFIG =====
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+if not TOKEN:
+    raise RuntimeError("❌ Missing TELEGRAM_TOKEN")
 
-app = Client(
-    "yt_downloader",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=TELEGRAM_TOKEN
-)
-
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 user_context = {}
 
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    await message.reply_text(
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text(
         "👋 Hey it's *Joss!* \n\n"
         "📥 You want to download a YouTube link? \n"
         "👉 Just *drop it here* — I'll handle the rest! 🚀",
-        parse_mode="markdown"
+        parse_mode='Markdown'
     )
 
-@app.on_message(filters.text)
-async def handle_link(client, message):
-    if message.text.startswith('/'):
+def handle_link(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+    
+    if "youtube.com" not in text and "youtu.be" not in text:
+        update.message.reply_text("⚠️ Please send a valid YouTube link")
         return
     
-    text = message.text.strip()
-    if "youtube.com" not in text and "youtu.be" not in text:
-        return await message.reply_text("⚠️ Please send a valid YouTube link")
-    
-    await message.reply_text("🔍 Fetching formats...")
+    update.message.reply_text("🔍 Fetching formats...")
     
     try:
         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
             info = ydl.extract_info(text, download=False)
         
-        user_context[message.from_user.id] = {'link': text, 'title': info.get('title', 'Video')}
+        user_context[user_id] = {'link': text, 'title': info.get('title', 'Video')}
         formats = [
             ('360p', 'bv[height<=360][ext=mp4]'),
             ('480p', 'bv[height<=480][ext=mp4]'),
@@ -52,26 +46,24 @@ async def handle_link(client, message):
         
         keyboard = []
         for i in range(0, len(formats), 2):
-            row = [types.InlineKeyboardButton(fmt[0], callback_data=fmt[1]) for fmt in formats[i:i+2]]
+            row = [InlineKeyboardButton(fmt[0], callback_data=fmt[1]) for fmt in formats[i:i+2]]
             keyboard.append(row)
         
-        await message.reply_text(
-            f"🎬 *{info['title']}*\n\n🎯 Choose format:",
-            parse_mode="markdown",
-            reply_markup=types.InlineKeyboardMarkup(keyboard)
-        )
+        update.message.reply_text(f"🎬 *{info['title']}*\n\n🎯 Choose format:", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
         
     except Exception as e:
-        await message.reply_text(f"❌ Error: {str(e)[:60]}")
+        update.message.reply_text(f"❌ Error: {str(e)[:60]}")
 
-@app.on_callback_query()
-async def download_format(client, callback_query):
-    user_id = callback_query.from_user.id
-    if user_id not in user_context:
-        return await callback_query.answer("⚠️ Send link first!")
+def download_format(update: Update, context: CallbackContext):
+    query = update.callback_query
+    user_id = query.from_user.id
     
-    fmt_id = callback_query.data
-    await callback_query.message.edit_text("⏳ Downloading...")
+    if user_id not in user_context:
+        query.answer("⚠️ Send link first!")
+        return
+    
+    fmt_id = query.data
+    query.message.edit_text("⏳ Downloading...")
     
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -94,19 +86,30 @@ async def download_format(client, callback_query):
                 file_path = new_path
             
             if file_path.endswith(('.mp3', '.m4a')):
-                await callback_query.message.reply_audio(open(file_path, 'rb'), title=info['title'])
+                query.message.reply_audio(open(file_path, 'rb'), title=info['title'])
             else:
-                await callback_query.message.reply_video(
+                # SEND AS DOCUMENT (WORKS FOR ANY SIZE)
+                query.message.reply_document(
                     open(file_path, 'rb'),
-                    caption=f"✅ {info['title']}",
-                    supports_streaming=True
+                    caption=f"✅ {info['title']} | Size: {os.path.getsize(file_path)//1024//1024} MB",
+                    disable_content_type_detection=True
                 )
         
         del user_context[user_id]
-        await callback_query.message.edit_text("🎉 Done!")
+        query.message.edit_text("🎉 Done!")
         
     except Exception as e:
-        await callback_query.message.edit_text(f"❌ Failed: {str(e)[:80]}")
+        query.message.edit_text(f"❌ Failed: {str(e)[:80]}")
 
-if __name__ == "__main__":
-    app.run()
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_link))
+    dp.add_handler(CallbackQueryHandler(download_format))
+    logger.info("✅ Bot ready")
+    updater.start_polling(drop_pending_updates=True)
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
