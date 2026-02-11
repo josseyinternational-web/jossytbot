@@ -32,10 +32,19 @@ def handle_link(update: Update, context: CallbackContext):
     msg = update.message.reply_text("🔍 Fetching formats...")
     
     try:
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'socket_timeout': 10,
+            'extract_flat': True
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(text, download=False)
         
-        user_context[user_id] = {'link': text, 'title': info.get('title', 'Video')}
+        if not info or 'title' not in info:
+            raise Exception("Invalid video")
+        
+        user_context[user_id] = {'link': text, 'title': info['title']}
         formats = [
             ('360p', 'bv[height<=360][ext=mp4]'),
             ('480p', 'bv[height<=480][ext=mp4]'),
@@ -49,10 +58,14 @@ def handle_link(update: Update, context: CallbackContext):
             row = [InlineKeyboardButton(fmt[0], callback_data=fmt[1]) for fmt in formats[i:i+2]]
             keyboard.append(row)
         
-        msg.edit_text(f"🎬 *{info['title']}*\n\n🎯 Choose format:", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+        msg.edit_text(
+            f"🎬 *{info['title']}*\n\n🎯 Choose format:",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         
     except Exception as e:
-        msg.edit_text(f"❌ Error: {str(e)[:60]}")
+        msg.edit_text(f"❌ Download error: Invalid link or private video")
 
 def download_format(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -80,6 +93,7 @@ def download_format(update: Update, context: CallbackContext):
                 'no_warnings': True,
                 'noplaylist': True,
                 'retries': 10,
+                'socket_timeout': 30,
                 'progress_hooks': [progress_hook]
             }
             
@@ -87,7 +101,6 @@ def download_format(update: Update, context: CallbackContext):
                 info = ydl.extract_info(user_context[user_id]['link'], download=True)
                 file_path = ydl.prepare_filename(info)
             
-            # Fix .webm → .mp4
             if file_path.endswith('.webm'):
                 new_path = file_path.replace('.webm', '.mp4')
                 os.rename(file_path, new_path)
@@ -99,10 +112,8 @@ def download_format(update: Update, context: CallbackContext):
                 query.message.reply_audio(open(file_path, 'rb'), title=info['title'])
             else:
                 try:
-                    # Try sending as video (fails if >50MB)
                     query.message.reply_video(open(file_path, 'rb'), caption=f"✅ {info['title']}")
                 except:
-                    # Fallback to document
                     query.message.reply_document(
                         open(file_path, 'rb'),
                         caption=f"✅ {info['title']} | Size: {os.path.getsize(file_path)//1024//1024} MB",
