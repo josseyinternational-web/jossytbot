@@ -29,7 +29,7 @@ def handle_link(update: Update, context: CallbackContext):
         update.message.reply_text("⚠️ Please send a valid YouTube link")
         return
     
-    update.message.reply_text("🔍 Fetching formats...")
+    msg = update.message.reply_text("🔍 Fetching formats...")
     
     try:
         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
@@ -49,10 +49,10 @@ def handle_link(update: Update, context: CallbackContext):
             row = [InlineKeyboardButton(fmt[0], callback_data=fmt[1]) for fmt in formats[i:i+2]]
             keyboard.append(row)
         
-        update.message.reply_text(f"🎬 *{info['title']}*\n\n🎯 Choose format:", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+        msg.edit_text(f"🎬 *{info['title']}*\n\n🎯 Choose format:", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
         
     except Exception as e:
-        update.message.reply_text(f"❌ Error: {str(e)[:60]}")
+        msg.edit_text(f"❌ Error: {str(e)[:60]}")
 
 def download_format(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -63,37 +63,51 @@ def download_format(update: Update, context: CallbackContext):
         return
     
     fmt_id = query.data
-    query.message.edit_text("⏳ Downloading...")
+    query.message.edit_text("⏳ Starting download...")
     
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
+            def progress_hook(d):
+                if d['status'] == 'downloading':
+                    percent = d['_percent_str'].strip()
+                    speed = d.get('_speed_str', '0').strip()
+                    query.message.edit_text(f"⏳ Downloading...\n\n`{percent}` • `{speed}`", parse_mode='Markdown')
+            
             ydl_opts = {
                 'format': fmt_id,
                 'outtmpl': os.path.join(tmpdir, '%(id)s.%(ext)s'),
-                'quiet': True,
+                'quiet': False,
                 'no_warnings': True,
                 'noplaylist': True,
-                'retries': 10
+                'retries': 10,
+                'progress_hooks': [progress_hook]
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(user_context[user_id]['link'], download=True)
                 file_path = ydl.prepare_filename(info)
             
+            # Fix .webm → .mp4
             if file_path.endswith('.webm'):
                 new_path = file_path.replace('.webm', '.mp4')
                 os.rename(file_path, new_path)
                 file_path = new_path
             
+            query.message.edit_text("📤 Uploading to Telegram...")
+            
             if file_path.endswith(('.mp3', '.m4a')):
                 query.message.reply_audio(open(file_path, 'rb'), title=info['title'])
             else:
-                # SEND AS DOCUMENT (WORKS FOR ANY SIZE)
-                query.message.reply_document(
-                    open(file_path, 'rb'),
-                    caption=f"✅ {info['title']} | Size: {os.path.getsize(file_path)//1024//1024} MB",
-                    disable_content_type_detection=True
-                )
+                try:
+                    # Try sending as video (fails if >50MB)
+                    query.message.reply_video(open(file_path, 'rb'), caption=f"✅ {info['title']}")
+                except:
+                    # Fallback to document
+                    query.message.reply_document(
+                        open(file_path, 'rb'),
+                        caption=f"✅ {info['title']} | Size: {os.path.getsize(file_path)//1024//1024} MB",
+                        disable_content_type_detection=True
+                    )
         
         del user_context[user_id]
         query.message.edit_text("🎉 Done!")
