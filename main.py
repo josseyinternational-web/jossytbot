@@ -37,11 +37,11 @@ def handle_link(update: Update, context: CallbackContext):
         
         user_context[user_id] = {'link': text, 'title': info.get('title', 'Video')}
         formats = [
-    ('360p', 'best[height<=360][ext=mp4]'),
-    ('480p', 'best[height<=480][ext=mp4]'),
-    ('720p', 'best[height<=720][ext=mp4]'),
-    ('1080p', 'best[height<=1080][ext=mp4]'),
-    ('🎵 Audio (MP3)', 'bestaudio[ext=m4a]')
+    ('360p', 'bv[height<=360][ext=mp4]'),
+    ('480p', 'bv[height<=480][ext=mp4]'),
+    ('720p', 'bv[height<=720][ext=mp4]'),
+    ('1080p', 'bv[height<=1080][ext=mp4]'),
+    ('🎵 Audio (MP3)', 'ba[ext=m4a]')
 ]
 
         
@@ -109,5 +109,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
